@@ -105,7 +105,11 @@ struct task_struct init_task __aligned(L1_CACHE_BYTES) = {
 	.prio		= MAX_PRIO - 20,
 	.static_prio	= MAX_PRIO - 20,
 	.normal_prio	= MAX_PRIO - 20,
+#ifdef CONFIG_GRR_SCHED
+	.policy		= SCHED_GRR,
+#else
 	.policy		= SCHED_NORMAL,
+#endif
 	.cpus_ptr	= &init_task.cpus_mask,
 	.user_cpus_ptr	= NULL,
 	.cpus_mask	= CPU_MASK_ALL,

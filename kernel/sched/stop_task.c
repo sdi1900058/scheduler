@@ -98,7 +98,7 @@ static void update_curr_stop(struct rq *rq)
  */
 DEFINE_SCHED_CLASS(stop) = {
 
-	.queue_mask		= 16,
+	.queue_mask		= 32,
 
 	.enqueue_task		= enqueue_task_stop,
 	.dequeue_task		= dequeue_task_stop,

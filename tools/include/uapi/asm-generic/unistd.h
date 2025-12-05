@@ -849,17 +849,23 @@ __SYSCALL(__NR_getxattrat, sys_getxattrat)
 __SYSCALL(__NR_listxattrat, sys_listxattrat)
 #define __NR_removexattrat 466
 __SYSCALL(__NR_removexattrat, sys_removexattrat)
-#define __NR_open_tree_attr 467
+#define __NR_sched_assign_ncores_to_group 467
+__SYSCALL(__NR_sched_assign_ncores_to_group, sys_sched_assign_ncores_to_group)
+#define __NR_sched_assign_process_to_group 468
+__SYSCALL(__NR_sched_assign_process_to_group, sys_sched_assign_process_to_group)
+#define __NR_open_tree_attr 469
 __SYSCALL(__NR_open_tree_attr, sys_open_tree_attr)
 
 /* fs/inode.c */
-#define __NR_file_getattr 468
+#define __NR_file_getattr 470
 __SYSCALL(__NR_file_getattr, sys_file_getattr)
-#define __NR_file_setattr 469
+#define __NR_file_setattr 471
 __SYSCALL(__NR_file_setattr, sys_file_setattr)
+#define __NR_listns 472
+__SYSCALL(__NR_listns, sys_listns)
 
 #undef __NR_syscalls
-#define __NR_syscalls 470
+#define __NR_syscalls 473
 
 /*
  * 32 bit systems traditionally used different

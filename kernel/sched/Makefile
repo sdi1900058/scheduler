@@ -34,6 +34,7 @@ endif
 # build parallelizes well and finishes roughly at once:
 #
 obj-y += core.o
+obj-$(CONFIG_GRR_SCHED) += grr.o
 obj-y += fair.o
 obj-y += build_policy.o
 obj-y += build_utility.o

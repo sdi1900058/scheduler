@@ -3347,7 +3347,7 @@ static int task_is_throttled_dl(struct task_struct *p, int cpu)
 
 DEFINE_SCHED_CLASS(dl) = {
 
-	.queue_mask		= 8,
+	.queue_mask		= 16,
 
 	.enqueue_task		= enqueue_task_dl,
 	.dequeue_task		= dequeue_task_dl,

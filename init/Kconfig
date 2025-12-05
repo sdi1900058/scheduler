@@ -2168,6 +2168,14 @@ config TRACEPOINTS
 
 source "kernel/Kconfig.kexec"
 
+config GRR_SCHED
+	bool "Group Round-Robin Scheduler Class"
+	default y
+	help
+	  Enable the Group Round-Robin scheduling class which sets
+	  scheduler-managed Default and Performance groups backed by a new
+	  SCHED_GRR policy.
+
 endmenu		# General setup
 
 source "arch/Kconfig"

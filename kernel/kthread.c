@@ -437,7 +437,11 @@ static int kthread(void *_create)
 	 * The new thread inherited kthreadd's priority and CPU mask. Reset
 	 * back to default in case they have been changed.
 	 */
+#ifdef CONFIG_GRR_SCHED
+	sched_setscheduler_nocheck(current, SCHED_GRR, &param);
+#else
 	sched_setscheduler_nocheck(current, SCHED_NORMAL, &param);
+#endif
 
 	/* OK, tell user we're spawned, wait for stop or wakeup */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
@@ -561,7 +565,8 @@ free_create:
  *
  * Description: This helper function creates and names a kernel
  * thread.  The thread will be stopped: use wake_up_process() to start
- * it.  See also kthread_run().  The new thread has SCHED_NORMAL policy and
+ * it.  See also kthread_run().  The new thread has SCHED_GRR policy (or
+ * SCHED_NORMAL when CONFIG_GRR_SCHED=n) and
  * is affine to all CPUs.
  *
  * If thread is going to be bound on a particular cpu, give its node

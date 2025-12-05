@@ -661,6 +661,8 @@ asmlinkage long sys_sched_rr_get_interval(pid_t pid,
 				struct __kernel_timespec __user *interval);
 asmlinkage long sys_sched_rr_get_interval_time32(pid_t pid,
 						 struct old_timespec32 __user *interval);
+asmlinkage long sys_sched_assign_ncores_to_group(int ncores, int group);
+asmlinkage long sys_sched_assign_process_to_group(pid_t pid, int group);
 asmlinkage long sys_restart_syscall(void);
 asmlinkage long sys_kill(pid_t pid, int sig);
 asmlinkage long sys_tkill(pid_t pid, int sig);

@@ -4398,6 +4398,12 @@ static void __sched_fork(u64 clone_flags, struct task_struct *p)
 	p->rt.on_rq		= 0;
 	p->rt.on_list		= 0;
 
+#ifdef CONFIG_GRR_SCHED
+	INIT_LIST_HEAD(&p->grr.run_list);
+	p->grr.time_slice	= 0;
+	p->grr.group		= GRR_DEFAULT;
+#endif
+
 #ifdef CONFIG_SCHED_CLASS_EXT
 	init_scx_entity(&p->scx);
 #endif
@@ -4616,6 +4622,14 @@ int sched_fork(u64 clone_flags, struct task_struct *p)
 
 	uclamp_fork(p);
 
+#ifdef CONFIG_GRR_SCHED
+	p->grr.time_slice = 0;
+	if (task_has_grr_policy(current))
+		p->grr.group = current->grr.group;
+	else
+		p->grr.group = GRR_DEFAULT;
+#endif
+
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -4646,6 +4660,10 @@ int sched_fork(u64 clone_flags, struct task_struct *p)
 
 	if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
+#ifdef CONFIG_GRR_SCHED
+	} else if (p->policy == SCHED_GRR) {
+		p->sched_class = &grr_sched_class;
+#endif
 #ifdef CONFIG_SCHED_CLASS_EXT
 	} else if (task_should_scx(p->policy)) {
 		p->sched_class = &ext_sched_class;
@@ -5549,6 +5567,13 @@ void sched_tick(void)
 		rq->idle_balance = idle_cpu(cpu);
 		sched_balance_trigger(rq);
 	}
+
+#ifdef CONFIG_GRR_SCHED
+	if (time_after(jiffies, rq->grr.last_balance + HZ / 2)) {
+		rq->grr.last_balance = jiffies;
+		grr_load_balance(rq);
+	}
+#endif
 }
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -7211,6 +7236,11 @@ const struct sched_class *__setscheduler_class(int policy, int prio)
 	if (rt_prio(prio))
 		return &rt_sched_class;
 
+#ifdef CONFIG_GRR_SCHED
+	if (policy == SCHED_GRR)
+		return &grr_sched_class;
+#endif
+
 #ifdef CONFIG_SCHED_CLASS_EXT
 	if (task_should_scx(policy))
 		return &ext_sched_class;
@@ -8551,6 +8581,10 @@ void __init sched_init(void)
 	/* Make sure the linker didn't screw up */
 	BUG_ON(!sched_class_above(&stop_sched_class, &dl_sched_class));
 	BUG_ON(!sched_class_above(&dl_sched_class, &rt_sched_class));
+#ifdef CONFIG_GRR_SCHED
+	BUG_ON(!sched_class_above(&rt_sched_class, &grr_sched_class));
+	BUG_ON(!sched_class_above(&grr_sched_class, &fair_sched_class));
+#endif
 	BUG_ON(!sched_class_above(&rt_sched_class, &fair_sched_class));
 	BUG_ON(!sched_class_above(&fair_sched_class, &idle_sched_class));
 #ifdef CONFIG_SCHED_CLASS_EXT
@@ -8619,6 +8653,11 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+#ifdef CONFIG_GRR_SCHED
+		INIT_LIST_HEAD(&rq->grr.queue);
+		rq->grr.nr_running = 0;
+		rq->grr.last_balance = jiffies;
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
 		rq->tmp_alone_branch = &rq->leaf_cfs_rq_list;
@@ -8728,6 +8767,9 @@ void __init sched_init(void)
 	idle_thread_set_boot_cpu();
 
 	balance_push_set(smp_processor_id(), false);
+#ifdef CONFIG_GRR_SCHED
+	init_grr_hierarchy();
+#endif
 	init_sched_fair_class();
 	init_sched_ext_class();
 
@@ -10830,3 +10872,93 @@ void sched_change_end(struct sched_change_ctx *ctx)
 		p->sched_class->prio_changed(rq, p, ctx->prio);
 	}
 }
+
+#ifdef CONFIG_GRR_SCHED
+extern int grr_core_group_map[NR_CPUS];
+
+SYSCALL_DEFINE2(sched_assign_ncores_to_group, int, ncores, int, group)
+{
+	int cpu, count = 0;
+	int other = (group == GRR_DEFAULT) ? GRR_PERFORMANCE : GRR_DEFAULT;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	if (group != GRR_DEFAULT && group != GRR_PERFORMANCE)
+		return -EINVAL;
+
+#ifdef CONFIG_SMP
+	if (ncores <= 0 || ncores >= num_online_cpus())
+		return -EINVAL;
+#else
+	if (ncores != 1)
+		return -EINVAL;
+#endif
+
+	for_each_online_cpu(cpu) {
+		int new_group = (count < ncores) ? group : other;
+		int old_group = grr_core_group_map[cpu];
+
+		grr_core_group_map[cpu] = new_group;
+		count++;
+
+		if (old_group != new_group) {
+			struct rq *rq = cpu_rq(cpu);
+			struct rq_flags rf;
+
+			rq_lock_irqsave(rq, &rf);
+			if (rq->curr && rq->curr->policy == SCHED_GRR &&
+			    rq->curr->grr.group != new_group)
+				resched_curr(rq);
+			rq_unlock_irqrestore(rq, &rf);
+		}
+	}
+
+	return 0;
+}
+
+SYSCALL_DEFINE2(sched_assign_process_to_group, pid_t, pid, int, group)
+{
+	struct task_struct *p;
+	struct rq *rq;
+	struct rq_flags rf;
+	int ret = 0;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	if (group != GRR_DEFAULT && group != GRR_PERFORMANCE)
+		return -EINVAL;
+
+	rcu_read_lock();
+	p = find_task_by_vpid(pid);
+	if (!p) {
+		rcu_read_unlock();
+		return -ESRCH;
+	}
+	get_task_struct(p);
+	rcu_read_unlock();
+
+	rq = task_rq_lock(p, &rf);
+	if (p->policy == SCHED_GRR) {
+		p->grr.group = group;
+		resched_curr(rq);
+	} else {
+		ret = -EINVAL;
+	}
+	task_rq_unlock(rq, p, &rf);
+	put_task_struct(p);
+
+	return ret;
+}
+#else
+SYSCALL_DEFINE2(sched_assign_ncores_to_group, int, ncores, int, group)
+{
+	return -ENOSYS;
+}
+
+SYSCALL_DEFINE2(sched_assign_process_to_group, pid_t, pid, int, group)
+{
+	return -ENOSYS;
+}
+#endif

@@ -567,6 +567,17 @@ struct sched_statistics {
 #endif /* CONFIG_SCHEDSTATS */
 } ____cacheline_aligned;
 
+#ifdef CONFIG_GRR_SCHED
+#define GRR_DEFAULT		1
+#define GRR_PERFORMANCE		2
+
+struct sched_grr_entity {
+	struct list_head		run_list;
+	unsigned int			time_slice;
+	int				group;
+};
+#endif
+
 struct sched_entity {
 	/* For load-balancing: */
 	struct load_weight		load;
@@ -871,6 +882,9 @@ struct task_struct {
 	struct sched_rt_entity		rt;
 	struct sched_dl_entity		dl;
 	struct sched_dl_entity		*dl_server;
+#ifdef CONFIG_GRR_SCHED
+	struct sched_grr_entity	grr;
+#endif
 #ifdef CONFIG_SCHED_CLASS_EXT
 	struct sched_ext_entity		scx;
 #endif

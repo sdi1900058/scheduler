@@ -76,6 +76,14 @@
 
 #include "../workqueue_internal.h"
 
+#ifdef CONFIG_GRR_SCHED
+struct grr_rq {
+	struct list_head	queue;
+	unsigned int		nr_running;
+	unsigned long		last_balance;
+};
+#endif
+
 struct rq;
 struct cfs_rq;
 struct rt_rq;
@@ -212,10 +220,22 @@ static inline int dl_policy(int policy)
 	return policy == SCHED_DEADLINE;
 }
 
+#ifdef CONFIG_GRR_SCHED
+static inline int grr_policy(int policy)
+{
+	return policy == SCHED_GRR;
+}
+#else
+static inline int grr_policy(int policy)
+{
+	return 0;
+}
+#endif
+
 static inline bool valid_policy(int policy)
 {
 	return idle_policy(policy) || fair_policy(policy) ||
-		rt_policy(policy) || dl_policy(policy);
+		rt_policy(policy) || dl_policy(policy) || grr_policy(policy);
 }
 
 static inline int task_has_idle_policy(struct task_struct *p)
@@ -231,6 +251,11 @@ static inline int task_has_rt_policy(struct task_struct *p)
 static inline int task_has_dl_policy(struct task_struct *p)
 {
 	return dl_policy(p->policy);
+}
+
+static inline int task_has_grr_policy(struct task_struct *p)
+{
+	return grr_policy(p->policy);
 }
 
 #define cap_scale(v, s)		((v)*(s) >> SCHED_CAPACITY_SHIFT)
@@ -1149,6 +1174,9 @@ struct rq {
 	struct cfs_rq		cfs;
 	struct rt_rq		rt;
 	struct dl_rq		dl;
+#ifdef CONFIG_GRR_SCHED
+	struct grr_rq		grr;
+#endif
 #ifdef CONFIG_SCHED_CLASS_EXT
 	struct scx_rq		scx;
 #endif
@@ -2432,9 +2460,10 @@ struct sched_class {
 	 * idle:  0
 	 * ext:   1
 	 * fair:  2
-	 * rt:    4
-	 * dl:    8
-	 * stop: 16
+	 * grr:   4
+	 * rt:    8
+	 * dl:   16
+	 * stop: 32
 	 */
 	unsigned int queue_mask;
 
@@ -2667,6 +2696,9 @@ extern struct sched_class __sched_class_lowest[];
 extern const struct sched_class stop_sched_class;
 extern const struct sched_class dl_sched_class;
 extern const struct sched_class rt_sched_class;
+#ifdef CONFIG_GRR_SCHED
+extern const struct sched_class grr_sched_class;
+#endif
 extern const struct sched_class fair_sched_class;
 extern const struct sched_class idle_sched_class;
 
@@ -2732,6 +2764,10 @@ extern struct task_struct *pick_task_idle(struct rq *rq, struct rq_flags *rf);
 extern void update_group_capacity(struct sched_domain *sd, int cpu);
 
 extern void sched_balance_trigger(struct rq *rq);
+#ifdef CONFIG_GRR_SCHED
+extern void init_grr_hierarchy(void);
+extern void grr_load_balance(struct rq *this_rq);
+#endif
 
 extern int __set_cpus_allowed_ptr(struct task_struct *p, struct affinity_context *ctx);
 extern void set_cpus_allowed_common(struct task_struct *p, struct affinity_context *ctx);
