@@ -2176,6 +2176,16 @@ config GRR_SCHED
 	  scheduler-managed Default and Performance groups backed by a new
 	  SCHED_GRR policy.
 
+config GRR_SCHED_DEFAULT
+	bool "Make GRR the default scheduler policy"
+	depends on GRR_SCHED
+	default n
+	help
+	  When enabled, the init task and kernel threads start with the
+	  SCHED_GRR policy. Leave disabled while bringing up or debugging
+	  the GRR scheduler so that the system can still boot using the
+	  existing default policy.
+
 endmenu		# General setup
 
 source "arch/Kconfig"

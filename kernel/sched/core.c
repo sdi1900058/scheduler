@@ -10911,6 +10911,8 @@ SYSCALL_DEFINE2(sched_assign_ncores_to_group, int, ncores, int, group)
 			    rq->curr->grr.group != new_group)
 				resched_curr(rq);
 			rq_unlock_irqrestore(rq, &rf);
+
+				grr_rebalance_cpu(cpu);
 		}
 	}
 
@@ -10947,6 +10949,9 @@ SYSCALL_DEFINE2(sched_assign_process_to_group, pid_t, pid, int, group)
 		ret = -EINVAL;
 	}
 	task_rq_unlock(rq, p, &rf);
+
+	if (!ret)
+		grr_move_task_to_allowed_cpu(p);
 	put_task_struct(p);
 
 	return ret;

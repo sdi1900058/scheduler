@@ -105,7 +105,7 @@ struct task_struct init_task __aligned(L1_CACHE_BYTES) = {
 	.prio		= MAX_PRIO - 20,
 	.static_prio	= MAX_PRIO - 20,
 	.normal_prio	= MAX_PRIO - 20,
-#ifdef CONFIG_GRR_SCHED
+#if defined(CONFIG_GRR_SCHED) && defined(CONFIG_GRR_SCHED_DEFAULT)
 	.policy		= SCHED_GRR,
 #else
 	.policy		= SCHED_NORMAL,

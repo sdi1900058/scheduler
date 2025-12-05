@@ -2767,6 +2767,8 @@ extern void sched_balance_trigger(struct rq *rq);
 #ifdef CONFIG_GRR_SCHED
 extern void init_grr_hierarchy(void);
 extern void grr_load_balance(struct rq *this_rq);
+extern void grr_rebalance_cpu(int cpu);
+extern void grr_move_task_to_allowed_cpu(struct task_struct *p);
 #endif
 
 extern int __set_cpus_allowed_ptr(struct task_struct *p, struct affinity_context *ctx);

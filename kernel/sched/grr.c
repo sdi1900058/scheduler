@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/cpumask.h>
 #include <linux/export.h>
+#include <linux/migrate.h>
 #include <linux/mmu_context.h>
 #include <linux/sched.h>
 #include <linux/sched/task.h>
@@ -32,7 +33,22 @@ void init_grr_hierarchy(void)
 }
 
 #ifdef CONFIG_SMP
-static int find_idlest_cpu_in_group(int group)
+static int find_first_cpu_in_group(int group, const struct cpumask *mask)
+{
+	int cpu;
+
+	for_each_online_cpu(cpu) {
+		if (grr_core_group_map[cpu] != group)
+			continue;
+		if (mask && !cpumask_test_cpu(cpu, mask))
+			continue;
+		return cpu;
+	}
+
+	return -1;
+}
+
+static int find_idlest_cpu_in_group(int group, const struct cpumask *mask)
 {
 	int cpu, best_cpu = -1;
 	unsigned int min_load = UINT_MAX;
@@ -40,7 +56,7 @@ static int find_idlest_cpu_in_group(int group)
 	for_each_online_cpu(cpu) {
 		if (grr_core_group_map[cpu] != group)
 			continue;
-		if (!cpumask_test_cpu(cpu, cpu_active_mask))
+		if (mask && !cpumask_test_cpu(cpu, mask))
 			continue;
 
 		if (cpu_rq(cpu)->grr.nr_running < min_load) {
@@ -50,6 +66,16 @@ static int find_idlest_cpu_in_group(int group)
 	}
 
 	return best_cpu;
+}
+
+static int grr_select_cpu_for_group(int group, const struct cpumask *mask)
+{
+	int cpu = find_idlest_cpu_in_group(group, mask);
+
+	if (cpu >= 0)
+		return cpu;
+
+	return find_first_cpu_in_group(group, mask);
 }
 #endif
 
@@ -121,9 +147,9 @@ static int select_task_rq_grr(struct task_struct *p, int cpu, int flags)
 {
 #ifdef CONFIG_SMP
 	int group = p->grr.group ? p->grr.group : GRR_DEFAULT;
-	int target = find_idlest_cpu_in_group(group);
+	int target = grr_select_cpu_for_group(group, p->cpus_ptr);
 
-	if (target >= 0 && cpumask_test_cpu(target, p->cpus_ptr))
+	if (target >= 0)
 		return target;
 #endif
 	return cpu;
@@ -213,6 +239,57 @@ void grr_load_balance(struct rq *this_rq)
 	}
 
 	double_rq_unlock(this_rq, busiest_rq);
+#endif
+}
+
+void grr_move_task_to_allowed_cpu(struct task_struct *p)
+{
+#ifdef CONFIG_SMP
+	int dst;
+	int group = p->grr.group ? p->grr.group : GRR_DEFAULT;
+
+	if (!p || p->policy != SCHED_GRR)
+		return;
+
+	dst = grr_select_cpu_for_group(group, p->cpus_ptr);
+	if (dst < 0 || dst == task_cpu(p))
+		return;
+
+	if (migrate_task_to(p, dst))
+		pr_warn_once("sched_grr: failed to migrate task %s (%d) to cpu %d\n",
+			     p->comm, p->pid, dst);
+#endif
+}
+
+void grr_rebalance_cpu(int cpu)
+{
+#ifdef CONFIG_SMP
+	for (;;) {
+		struct sched_grr_entity *se;
+		struct task_struct *p = NULL;
+		struct rq *rq = cpu_rq(cpu);
+		struct rq_flags rf;
+
+		rq_lock_irqsave(rq, &rf);
+		list_for_each_entry(se, &rq->grr.queue, run_list) {
+			struct task_struct *candidate =
+				container_of(se, struct task_struct, grr);
+
+			if (candidate->grr.group == grr_core_group_map[cpu])
+				continue;
+
+			get_task_struct(candidate);
+			p = candidate;
+			break;
+		}
+		rq_unlock_irqrestore(rq, &rf);
+
+		if (!p)
+			break;
+
+		grr_move_task_to_allowed_cpu(p);
+		put_task_struct(p);
+	}
 #endif
 }
 
